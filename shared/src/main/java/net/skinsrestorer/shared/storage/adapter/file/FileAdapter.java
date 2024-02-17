@@ -55,6 +55,7 @@ import java.util.stream.Stream;
 public class FileAdapter implements StorageAdapter {
     private static final String LAST_KNOW_NAME_ATTRIBUTE = "sr_last_known_name";
     private static final Pattern UUID_REGEX = Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+    private static final Random RANDOM = new Random();
     private final Path skinsFolder;
     private final Path playersFolder;
     private final Path cacheFolder;
@@ -525,6 +526,37 @@ public class FileAdapter implements StorageAdapter {
         return list;
     }
 
+    @Override
+    public Map<String, String> getStoredRandomSkins(int limit) {
+        Map<String, String> list = new LinkedHashMap<>();
+
+        Map<String, GUIFileData> files = getRandomFiles(limit);
+
+        for (Map.Entry<String, GUIFileData> entry : files.entrySet()) {
+            GUIFileData data = entry.getValue();
+            String fileName = data.fileName();
+            try {
+                Optional<SkinProperty> skinProperty;
+                SkinType skinType = data.skinType();
+                if (skinType == SkinType.PLAYER) {
+                    skinProperty = getPlayerSkinData(UUID.fromString(fileName))
+                            .map(PlayerSkinData::getProperty);
+                } else if (skinType == SkinType.CUSTOM) {
+                    skinProperty = getCustomSkinData(fileName)
+                            .map(CustomSkinData::getProperty);
+                } else {
+                    throw new IllegalStateException("Unknown skin type: " + skinType);
+                }
+
+                skinProperty.ifPresent(property -> list.put(entry.getKey(), property.getValue()));
+            } catch (StorageException e) {
+                logger.warning("Failed to load skin data for " + fileName, e);
+            }
+        }
+
+        return list;
+    }
+
     private Map<String, GUIFileData> getGUIFilesSorted(int offset) {
         boolean customEnabled = settings.getProperty(GUIConfig.CUSTOM_GUI_ENABLED);
         boolean customOnly = settings.getProperty(GUIConfig.CUSTOM_GUI_ONLY);
@@ -598,6 +630,95 @@ public class FileAdapter implements StorageAdapter {
         }
 
         return files;
+    }
+
+    private Map<String, GUIFileData> getRandomFiles(int limit) {
+        boolean customEnabled = settings.getProperty(GUIConfig.CUSTOM_GUI_ENABLED);
+
+        Map<String, GUIFileData> files = new LinkedHashMap<>();
+        try (Stream<Path> fileStream = Files.walk(skinsFolder, 1)) {
+            long fileCount = fileStream.count(); // sadly, the only way to count files is through iteration
+            limit = (int) Math.min(limit, fileCount);
+            long[] indexes = getRandomNumbers(limit, fileCount);
+            Stack<Long> skips = new Stack<>();
+            for (int i = 1; i < indexes.length; i++) {
+                skips.push(indexes[i] - indexes[i - 1]);
+            }
+            try (Stream<Path> stream = Files.walk(skinsFolder, 1)) {
+                int skinIndex = 0;
+                int filesSkipped = 0;
+                for (Path path : (Iterable<Path>) stream::iterator) {
+                    if (skips.peek() > filesSkipped++) { // skip enough files to reach next random file
+                        continue;
+                    }
+                    if (Files.isDirectory(path)) {
+                        continue;
+                    }
+
+                    String fileName = path.getFileName().toString();
+                    int lastDotIndex = fileName.lastIndexOf(".");
+                    if (lastDotIndex == -1) {
+                        continue;
+                    }
+
+                    String extension = fileName.substring(lastDotIndex + 1);
+                    String name = fileName.substring(0, lastDotIndex);
+
+                    boolean isPlayerSkin = extension.equals("playerskin");
+                    boolean isCustomSkin = extension.equals("customskin");
+
+                    // Only allow player skins and custom skins
+                    if (!isPlayerSkin && !isCustomSkin) {
+                        continue;
+                    }
+
+                    // Do not allow custom skins if not enabled
+                    if (isCustomSkin && !customEnabled) {
+                        continue;
+                    }
+
+                    // completed current skipping phase
+                    skips.pop();
+
+                    GUIFileData data = new GUIFileData(name, path, isPlayerSkin ? SkinType.PLAYER : SkinType.CUSTOM);
+                    if (isPlayerSkin) {
+                        getLastKnownName(path)
+                                .ifPresent(lastKnownName -> files.put(lastKnownName, data));
+                    } else {
+                        files.put(name, data);
+                    }
+
+                    // We got max skins now, stop
+                    if (skinIndex++ >= limit) {
+                        break;
+                    }
+                }
+            }
+        } catch (IOException e) {
+            logger.warning("Failed to load GUI files", e);
+        }
+
+        return files;
+    }
+
+    private long[] getRandomNumbers(int amount, long max) {
+        amount = (int) Math.min(amount, max);
+        long[] numbers = new long[amount];
+        for (int i = 0; i < amount; i++) {
+            numbers[i] = RANDOM.nextLong(max);
+        }
+        Arrays.sort(numbers);
+        for (int i = 1; i < numbers.length; i++) {
+            if (numbers[i] <= numbers[i - 1]) {
+                numbers[i] = numbers[i - 1] + 1;
+            }
+        }
+        for (int i = numbers.length - 2; i >= 0; i--) {
+            if (numbers[i] >= numbers[i + 1]) {
+                numbers[i] = numbers[i + 1] - 1;
+            }
+        }
+        return numbers;
     }
 
     private Optional<String> getLastKnownName(Path path) {

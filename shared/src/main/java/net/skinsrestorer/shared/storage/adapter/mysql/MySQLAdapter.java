@@ -440,6 +440,40 @@ public class MySQLAdapter implements StorageAdapter {
 
     @SuppressFBWarnings(justification = "SQL injection is not possible here", value = {"SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING"})
     @Override
+    public Map<String, String> getStoredRandomSkins(int limit) {
+        StringBuilder query = new StringBuilder("SELECT * FROM (");
+        query.append("SELECT 'player' as type, `last_known_name` as name, `value`, `signature`")
+                .append(" FROM ")
+                .append(resolvePlayerSkinTable());
+
+        if (settings.getProperty(GUIConfig.CUSTOM_GUI_ENABLED)) {
+            query.append(" UNION ALL ");
+
+            query.append("SELECT 'custom' as type, `name`, `value`, `signature`")
+                    .append(" FROM ")
+                    .append(resolveCustomSkinTable());
+
+        }
+
+        query.append(") AS skins ORDER BY RAND() LIMIT ").append(limit);
+
+        Map<String, String> skins = new LinkedHashMap<>();
+        try (ResultSet crs = mysql.query(query.toString())) {
+            while (crs.next()) {
+                String name = crs.getString("name");
+                String value = crs.getString("value");
+                String signature = crs.getString("signature");
+
+                skins.put(name, SkinProperty.of(value, signature).getValue());
+            }
+        } catch (SQLException e) {
+            logger.warning("Failed to get stored skins", e);
+        }
+        return skins;
+    }
+
+    @SuppressFBWarnings(justification = "SQL injection is not possible here", value = {"SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING"})
+    @Override
     public Map<String, String> getStoredGUISkins(int offset) {
         StringBuilder query = new StringBuilder("SELECT * FROM (");
         query.append("SELECT 'player' as type, `last_known_name` as name, `value`, `signature`")

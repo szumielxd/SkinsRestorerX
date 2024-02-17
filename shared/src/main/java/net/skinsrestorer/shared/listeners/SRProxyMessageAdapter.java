@@ -68,6 +68,10 @@ public final class SRProxyMessageAdapter {
                     int page = Math.min(in.readInt(), 999);
                     proxyPlugin.sendPage(page, player, skinStorage);
                 }
+                case "getRandomSkins" -> {
+                    int amount = Math.min(in.readInt(), 50);
+                    proxyPlugin.sendRandomSkins(amount, player, skinStorage);
+                }
                 case "clearSkin" -> commandManager.executeCommand(player, "skin clear");
                 case "setSkin" -> {
                     String skin = in.readUTF();

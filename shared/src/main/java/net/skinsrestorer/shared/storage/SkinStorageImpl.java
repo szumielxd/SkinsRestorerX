@@ -188,6 +188,10 @@ public class SkinStorageImpl implements SkinStorage {
         return adapterReference.get().getStoredGUISkins(offset);
     }
 
+    public Map<String, String> getRandomSkins(int limit) {
+        return adapterReference.get().getStoredRandomSkins(limit);
+    }
+
     @Override
     public Optional<InputDataResult> findSkinData(String input) {
         try {

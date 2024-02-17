@@ -66,6 +66,33 @@ public class SRProxyPlugin {
         player.sendDataToServer("sr:messagechannel", data);
     }
 
+    public void sendRandomSkins(int amount, SRProxyPlayer player, SkinStorageImpl skinStorage) {
+
+        byte[] ba = MessageProtocolUtil.convertToByteArray(skinStorage.getRandomSkins(amount));
+
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(b);
+
+        try {
+            out.writeUTF("randomSkins");
+
+            out.writeShort(ba.length);
+            out.write(ba);
+        } catch (IOException e1) {
+            e1.printStackTrace();
+        }
+
+        byte[] data = b.toByteArray();
+        logger.debug(String.format("Sending random skins to %s (%d bytes)", player.getName(), data.length));
+        // Payload may not be larger than 32767 bytes -18 from channel name
+        if (data.length > 32_749) {
+            logger.warning("Too many bytes Skins Packet... canceling Skins Packet..");
+            return;
+        }
+
+        player.sendDataToServer("sr:messagechannel", data);
+    }
+
     public void sendUpdateRequest(@NotNull SRProxyPlayer player, SkinProperty textures) {
         if (player.getCurrentServer().isEmpty()) {
             return;

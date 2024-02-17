@@ -68,6 +68,8 @@ public interface StorageAdapter {
 
     void removeLegacyPlayerData(String playerName);
 
+    Map<String, String> getStoredRandomSkins(int amount);
+
     Map<String, String> getStoredGUISkins(int offset);
 
     void purgeStoredOldSkins(long targetPurgeTimestamp) throws StorageException;
